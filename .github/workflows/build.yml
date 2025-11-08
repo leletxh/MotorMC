@@ -21,7 +21,10 @@ jobs:
           shell: msys2 {0}
 
     steps:      
-    - uses: actions/checkout@v2
+    - uses: actions/upload-artifact@v4
+      with:
+        name: MotorMC-Windows
+        path: ${{ github.workspace }}/MotorMC.exe
     - uses: msys2/setup-msys2@v2
       with:
         update: true
@@ -73,10 +76,10 @@ jobs:
         cd $workspace
         make
 
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: MotorMC-Windows
-        path: ${{github.workspace}}/MotorMC.exe
+        path: ${{ github.workspace }}/MotorMC.exe
 
     - name: Test
       working-directory: ${{github.workspace}}
@@ -90,7 +93,10 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/upload-artifact@v4
+       with:
+         name: MotorMC-Windows
+         path: ${{ github.workspace }}/MotorMC.exe
 
     - name: Install GMP
       run: |
