@@ -5,189 +5,156 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch:  # 允许手动触发
 
 env:
-  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
 
 jobs:
   build-windows:
-    
     runs-on: windows-latest
-
     defaults:
-        run:
-          shell: msys2 {0}
+      run:
+        shell: msys2 {0}
 
-    steps:      
-    - uses: actions/upload-artifact@v4
-      with:
-        name: MotorMC-Windows
-        path: ${{ github.workspace }}/MotorMC.exe
-    - uses: msys2/setup-msys2@v2
-      with:
-        update: true
-        msystem: mingw64
-        install: >-
-          make
-          cmake
-          automake
-          autoconf
-          libtool
-          mingw-w64-x86_64-toolchain
-          git
-          mingw-w64-x86_64-gmp
-          openssl-devel
+    steps:
+      - uses: actions/checkout@v4
 
-    - name: Set Workspace
-      run: |
-        echo "::set-env name=workspace::${github_workspace//\\//}"
-      shell: bash
-      env:
-        github_workspace: ${{github.workspace}}
-        ACTIONS_ALLOW_UNSECURE_COMMANDS: true
-        
-    - name: Install libdeflate
-      run: |
-        git clone https://github.com/ebiggers/libdeflate.git $workspace/libs/ebiggers/libdeflate
-        cd $workspace/libs/ebiggers/libdeflate
-        make libdeflatestatic.lib
-        mkdir -p /usr/local/lib/
-        mkdir -p /usr/local/include/
-        cp libdeflatestatic.lib /usr/local/lib/
-        cp libdeflate.h /usr/local/include/
-        
-    - name: Install cURL
-      run: |
-        git clone https://github.com/curl/curl.git $workspace/libs/curl/curl
-        cd $workspace/libs/curl/curl
-        autoreconf -fi
-        ./configure --disable-shared --with-schannel --disable-ldap --disable-sspi --without-librtmp --disable-ftp --disable-file --disable-dict --disable-telnet --disable-tftp --disable-rtsp --disable-pop3 --disable-imap --disable-smtp --disable-gopher --disable-smb --without-libidn
-        make install
+      - uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          msystem: mingw64
+          install: >-
+            make
+            cmake
+            automake
+            autoconf
+            libtool
+            mingw-w64-x86_64-toolchain
+            git
+            mingw-w64-x86_64-gmp
+            mingw-w64-x86_64-openssl
 
-    - name: Configure CMake
-      run: |
-        cd $workspace
-        cmake . -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DWIN32=true
+      - name: Set Workspace Path (Unix-style)
+        run: |
+          echo "WORKSPACE_UNIX=${PWD}" >> $GITHUB_ENV
 
-    - name: Build
-      run: |
-        cd $workspace
-        make
+      - name: Install libdeflate
+        run: |
+          git clone https://github.com/ebiggers/libdeflate.git "$WORKSPACE_UNIX/libs/ebiggers/libdeflate"
+          cd "$WORKSPACE_UNIX/libs/ebiggers/libdeflate"
+          make libdeflate.a
+          mkdir -p /usr/local/lib /usr/local/include
+          cp libdeflate.a /usr/local/lib/
+          cp libdeflate.h /usr/local/include/
 
-    - uses: actions/upload-artifact@v4
-      with:
-        name: MotorMC-Windows
-        path: ${{ github.workspace }}/MotorMC.exe
+      - name: Install cURL
+        run: |
+          git clone https://github.com/curl/curl.git "$WORKSPACE_UNIX/libs/curl/curl"
+          cd "$WORKSPACE_UNIX/libs/curl/curl"
+          autoreconf -fi
+          ./configure \
+            --disable-shared \
+            --with-schannel \
+            --disable-ldap --disable-sspi --without-librtmp \
+            --disable-ftp --disable-file --disable-dict --disable-telnet \
+            --disable-tftp --disable-rtsp --disable-pop3 --disable-imap \
+            --disable-smtp --disable-gopher --disable-smb \
+            --without-libidn
+          make install
 
-    - name: Test
-      working-directory: ${{github.workspace}}
-      # Execute tests defined by the CMake configuration.  
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: |
-        ./MotorMC test
+      - name: Configure CMake
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DWIN32=ON
+
+      - name: Build
+        run: |
+          cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MotorMC-Windows
+          path: ${{ github.workspace }}/build/MotorMC.exe
+
+      - name: Test
+        working-directory: ${{ github.workspace }}/build
+        run: |
+          ./MotorMC.exe test
 
   build-osx:
-    
     runs-on: macos-latest
-
     steps:
-    - uses: actions/upload-artifact@v4
-       with:
-         name: MotorMC-Windows
-         path: ${{ github.workspace }}/MotorMC.exe
+      - uses: actions/checkout@v4
 
-    - name: Install GMP
-      run: |
-        brew install gmp
-        sudo rm /usr/local/opt/gmp/lib/libgmp.10.dylib
+      - name: Install Dependencies
+        run: |
+          brew install gmp openssl@3
 
-    - name: Install OpenSSL
-      run: |
-        brew install openssl@3
-        sudo rm /usr/local/opt/openssl@3/lib/libcrypto.3.dylib
-        sudo rm /usr/local/opt/openssl@3/lib/libssl.3.dylib
-        cp -R /usr/local/opt/openssl@3/lib/. /usr/local/lib/
-        cp -R /usr/local/opt/openssl@3/include/. /usr/local/include/
-    
-    - name: Install libdeflate
-      run: |
-        git clone https://github.com/ebiggers/libdeflate.git ${{github.workspace}}/libs/ebiggers/libdeflate
-        cd ${{github.workspace}}/libs/ebiggers/libdeflate
-        sudo make libdeflate.a
-        sudo mv libdeflate.a /usr/local/lib/libdeflate.a
-        sudo mv libdeflate.h /usr/local/include/libdeflate.h
-      
-    - name: Configure CMake
-      run: |
-        cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+      - name: Link OpenSSL
+        run: |
+          sudo cp -R /usr/local/opt/openssl@3/lib/* /usr/local/lib/
+          sudo cp -R /usr/local/opt/openssl@3/include/* /usr/local/include/
 
-    - name: Build
-      run: |
-        cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      - name: Install libdeflate
+        run: |
+          git clone https://github.com/ebiggers/libdeflate.git ${{ github.workspace }}/libs/ebiggers/libdeflate
+          cd ${{ github.workspace }}/libs/ebiggers/libdeflate
+          make libdeflate.a
+          sudo cp libdeflate.a /usr/local/lib/
+          sudo cp libdeflate.h /usr/local/include/
 
-    - uses: actions/upload-artifact@v2
-      with:
-        name: MotorMC-MacOS
-        path: ${{github.workspace}}/build/MotorMC
+      - name: Configure CMake
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
-    - name: Test
-      working-directory: ${{github.workspace}}/build
-      # Execute tests defined by the CMake configuration.  
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: |
-        sudo chmod +x MotorMC
-        ./MotorMC test
+      - name: Build
+        run: |
+          cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MotorMC-MacOS
+          path: ${{ github.workspace }}/build/MotorMC
+
+      - name: Test
+        working-directory: ${{ github.workspace }}/build
+        run: |
+          chmod +x MotorMC
+          ./MotorMC test
 
   build-ubuntu:
-    
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-    - name: Install GMP
-      run: |
-        sudo apt-get update
-        sudo apt-get install libgmp-dev
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgmp-dev libssl-dev libcurl4-openssl-dev
 
-    - name: Install OpenSSL
-      run: |
-        sudo apt-get update
-        sudo apt-get install libssl-dev
+      - name: Install libdeflate
+        run: |
+          git clone https://github.com/ebiggers/libdeflate.git ${{ github.workspace }}/libs/ebiggers/libdeflate
+          cd ${{ github.workspace }}/libs/ebiggers/libdeflate
+          make libdeflate.a
+          sudo cp libdeflate.a /usr/local/lib/
+          sudo cp libdeflate.h /usr/local/include/
 
-    - name: Install libcurl
-      run: |
-        sudo apt-get update
-        sudo apt-get install libcurl4-openssl-dev
-    
-    - name: Install libdeflate
-      run: |
-        git clone https://github.com/ebiggers/libdeflate.git ${{github.workspace}}/libs/ebiggers/libdeflate
-        cd ${{github.workspace}}/libs/ebiggers/libdeflate
-        sudo make libdeflate.a
-        sudo mv libdeflate.a /usr/local/lib/libdeflate.a
-        sudo mv libdeflate.h /usr/local/include/libdeflate.h
-      
-    - name: Configure CMake
-      run: |
-        cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+      - name: Configure CMake
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
-    - name: Build
-      run: |
-        cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      - name: Build
+        run: |
+          cmake --build build --config ${{ env.BUILD_TYPE }}
 
-    - uses: actions/upload-artifact@v2
-      with:
-        name: MotorMC-Ubuntu
-        path: ${{github.workspace}}/build/MotorMC
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MotorMC-Ubuntu
+          path: ${{ github.workspace }}/build/MotorMC
 
-    - name: Test
-      working-directory: ${{github.workspace}}/build
-      # Execute tests defined by the CMake configuration.  
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: |
-        sudo chmod +x MotorMC
-        ./MotorMC test
-      
+      - name: Test
+        working-directory: ${{ github.workspace }}/build
+        run: |
+          chmod +x MotorMC
+          ./MotorMC test
